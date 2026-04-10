@@ -1,0 +1,28 @@
+# Web framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+
+# Data validation / settings
+pydantic==2.11.1
+pydantic-settings==2.8.1
+
+# Vector store
+chromadb==0.6.3
+
+# Embeddings (CPU-only torch is installed separately in Dockerfile)
+sentence-transformers==4.0.1
+
+# PDF parsing
+pypdf==5.4.0
+
+# HuggingFace datasets
+datasets==3.5.0
+huggingface-hub==0.30.2
+
+# LLM clients
+anthropic==0.51.0
+openai==1.72.0
+
+# Utilities
+python-dotenv==1.1.0
+numpy==2.2.4

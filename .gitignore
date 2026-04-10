@@ -1,0 +1,41 @@
+# Environment
+.env
+
+# ChromaDB persistent storage
+chroma_data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# HuggingFace model/dataset cache
+.cache/
+~/.cache/huggingface/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# MTG rules PDF (large binary, distribute separately)
+mtg-rules.pdf
