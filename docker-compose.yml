@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "${HOST_PORT:-8000}:8000"
     volumes:
       # Persist ChromaDB embeddings across container restarts
       - chroma_data:/app/chroma_data
