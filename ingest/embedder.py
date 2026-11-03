@@ -3,10 +3,15 @@ Shared embedding logic using sentence-transformers.
 All embedding calls funnel through this module so the model is loaded once.
 """
 
-import numpy as np
-from sentence_transformers import SentenceTransformer
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from config import settings
+
+if TYPE_CHECKING:
+    import numpy as np
+    from sentence_transformers import SentenceTransformer
 
 _model: SentenceTransformer | None = None
 
@@ -15,6 +20,10 @@ def get_model() -> SentenceTransformer:
     """Return the embedding model, initialising it on first call (lazy singleton)."""
     global _model
     if _model is None:
+        # Imported lazily so modules that only need the store (and tests) do not
+        # pay for loading torch.
+        from sentence_transformers import SentenceTransformer
+
         _model = SentenceTransformer(settings.EMBEDDING_MODEL)
     return _model
 

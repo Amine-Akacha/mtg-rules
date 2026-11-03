@@ -2,18 +2,26 @@
 Pydantic request and response models for all API endpoints.
 """
 
-from pydantic import BaseModel, Field
+from typing import Literal
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class AskRequest(BaseModel):
     """Body for POST /ask."""
 
     question: str = Field(..., min_length=1, description="The MTG rules question to answer.")
-    provider: str | None = Field(
+    provider: Literal["anthropic", "openai"] | None = Field(
         default=None,
         description="Optional LLM provider override ('anthropic' or 'openai'). "
         "Defaults to the LLM_PROVIDER environment variable.",
     )
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def normalise_provider(cls, v: object) -> object:
+        """Accept any casing, e.g. 'OpenAI'."""
+        return v.lower() if isinstance(v, str) else v
 
 
 class AskResponse(BaseModel):

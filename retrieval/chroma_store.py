@@ -54,6 +54,38 @@ def collection_count(name: str) -> int:
     return get_collection(name).count()
 
 
+_INGEST_COMPLETE_KEY = "ingest_complete"
+
+
+def is_ingest_complete(name: str) -> bool:
+    """
+    Return True when a previous ingest of *name* ran to completion.
+
+    A collection with documents but no completion marker was left behind by an
+    ingest that crashed part-way through and must be rebuilt.
+    """
+    metadata = get_collection(name).metadata or {}
+    return bool(metadata.get(_INGEST_COMPLETE_KEY))
+
+
+def mark_ingest_complete(name: str) -> None:
+    """Record on the collection that its ingest finished successfully."""
+    collection = get_collection(name)
+    # hnsw:* keys are immutable after creation; only carry over the rest.
+    metadata = {
+        k: v for k, v in (collection.metadata or {}).items() if not k.startswith("hnsw:")
+    }
+    metadata[_INGEST_COMPLETE_KEY] = True
+    collection.modify(metadata=metadata)
+
+
+def reset_collection(name: str) -> None:
+    """Delete *name* (if it exists) so it can be rebuilt from scratch."""
+    client = get_client()
+    if name in {c if isinstance(c, str) else c.name for c in client.list_collections()}:
+        client.delete_collection(name)
+
+
 def upsert_chunks(
     collection_name: str,
     chunks: list[dict],

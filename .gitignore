@@ -39,3 +39,6 @@ Thumbs.db
 
 # MTG rules PDF (large binary, distribute separately)
 mtg-rules.pdf
+
+# Test cache
+.pytest_cache/
