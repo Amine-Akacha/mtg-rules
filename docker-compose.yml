@@ -1,10 +1,10 @@
-version: "3.9"
-
 services:
   mtg-rag:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        EMBEDDING_MODEL: ${EMBEDDING_MODEL:-all-MiniLM-L6-v2}
     ports:
       - "${HOST_PORT:-8000}:8000"
     volumes:
@@ -14,7 +14,8 @@ services:
       - .env
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      # python:3.11-slim ships without curl, so probe with the stdlib instead
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 30s
       timeout: 10s
       retries: 3
