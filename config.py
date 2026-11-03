@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # ---------------------------------------------------------------------------
     # Chunking
     # ---------------------------------------------------------------------------
+    # Soft cap per rules chunk. all-MiniLM-L6-v2 only reads the first 256
+    # word-pieces (~180 words) of each text; anything beyond is not embedded.
+    RULE_CHUNK_MAX_WORDS: int = 180
+    # Fixed-window fallback, used only when the PDF has no rule numbers.
     CHUNK_SIZE: int = 500   # words (whitespace-tokenised proxy for tokens)
     CHUNK_OVERLAP: int = 50
 
