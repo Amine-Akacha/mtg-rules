@@ -3,24 +3,39 @@ FastAPI route definitions for /ask, /ingest, and /health.
 
 All business logic lives in the ingest/, retrieval/, and generation/ packages.
 This module only wires HTTP requests to those functions.
+
+Handlers are plain ``def`` (not ``async def``) on purpose: embedding, ChromaDB
+and the LLM SDK calls are all blocking, so FastAPI must run them in its
+threadpool rather than on the event loop.
 """
+
+import threading
+from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException
 
 from api.schemas import AskRequest, AskResponse, HealthResponse, IngestResponse
 from config import settings
-from generation.llm_client import generate
+from generation.llm_client import LLMConfigError, LLMError, generate
 from generation.prompt_builder import build_prompt
 from ingest.load_cards import load_card_chunks
 from ingest.load_rules import load_rules_chunks
-from retrieval.chroma_store import collection_count, upsert_chunks
+from retrieval.chroma_store import (
+    collection_count,
+    is_ingest_complete,
+    mark_ingest_complete,
+    reset_collection,
+    upsert_chunks,
+)
 from retrieval.retriever import retrieve
 
 router = APIRouter()
 
+_ingest_lock = threading.Lock()
+
 
 @router.get("/health", response_model=HealthResponse, tags=["ops"])
-async def health() -> HealthResponse:
+def health() -> HealthResponse:
     """
     Return service status, the active LLM provider, and ChromaDB collection sizes.
 
@@ -37,26 +52,24 @@ async def health() -> HealthResponse:
 
 
 @router.post("/ask", response_model=AskResponse, tags=["rag"])
-async def ask(request: AskRequest) -> AskResponse:
+def ask(request: AskRequest) -> AskResponse:
     """
     Answer an MTG rules question using retrieval-augmented generation.
 
-    1. Validates the requested provider (if supplied).
-    2. Retrieves the top-k most relevant chunks from both collections.
-    3. Builds the prompt with retrieved context.
-    4. Calls the configured LLM and returns the answer.
+    Raises:
+        HTTPException 503: When the selected provider is not configured.
+        HTTPException 502: When the provider API call fails.
     """
-    active_provider = (request.provider or settings.LLM_PROVIDER).lower()
-
-    if active_provider not in ("anthropic", "openai"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid provider {active_provider!r}. Must be 'anthropic' or 'openai'.",
-        )
+    active_provider = request.provider or settings.LLM_PROVIDER
 
     chunks = retrieve(request.question)
     system_prompt, user_message = build_prompt(request.question, chunks)
-    answer = generate(system_prompt, user_message, provider=active_provider)
+    try:
+        answer = generate(system_prompt, user_message, provider=active_provider)
+    except LLMConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except LLMError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return AskResponse(
         answer=answer,
@@ -65,37 +78,46 @@ async def ask(request: AskRequest) -> AskResponse:
     )
 
 
+def _ingest_collection(name: str, load: Callable[[], list[dict]]) -> int:
+    """
+    Populate *name* unless a previous ingest already completed.
+
+    A collection left half-populated by a crashed ingest is dropped and rebuilt.
+    Returns the number of chunks ingested (0 when skipped).
+    """
+    if is_ingest_complete(name):
+        return 0
+
+    chunks = load()
+    reset_collection(name)
+    upsert_chunks(name, chunks, batch_size=settings.BATCH_SIZE)
+    mark_ingest_complete(name)
+    return len(chunks)
+
+
 @router.post("/ingest", response_model=IngestResponse, tags=["ops"])
-async def ingest() -> IngestResponse:
+def ingest() -> IngestResponse:
     """
     Run the ingest pipeline to populate ChromaDB with rules and card data.
 
-    Idempotent — a collection is only populated when it is empty, so repeated
-    calls will not re-embed or overwrite existing data.
+    Idempotent — a collection is only (re)built when no previous ingest of it
+    ran to completion, so repeated calls do not re-embed finished data.
 
     Raises:
         HTTPException 404: When the rules PDF is missing from the expected path.
-        HTTPException 500: On unexpected errors during dataset loading.
+        HTTPException 409: When another ingest is already running.
     """
-    rules_count = collection_count(settings.RULES_COLLECTION)
-    cards_count = collection_count(settings.CARDS_COLLECTION)
+    if not _ingest_lock.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="An ingest is already running.")
 
-    rules_ingested = 0
-    cards_ingested = 0
-
-    if rules_count == 0:
+    try:
         try:
-            rules_chunks = load_rules_chunks()
+            rules_ingested = _ingest_collection(settings.RULES_COLLECTION, load_rules_chunks)
         except FileNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-        upsert_chunks(settings.RULES_COLLECTION, rules_chunks, batch_size=settings.BATCH_SIZE)
-        rules_ingested = len(rules_chunks)
-
-    if cards_count == 0:
-        cards_chunks = load_card_chunks()
-        upsert_chunks(settings.CARDS_COLLECTION, cards_chunks, batch_size=settings.BATCH_SIZE)
-        cards_ingested = len(cards_chunks)
+        cards_ingested = _ingest_collection(settings.CARDS_COLLECTION, load_card_chunks)
+    finally:
+        _ingest_lock.release()
 
     if rules_ingested == 0 and cards_ingested == 0:
         message = "Collections already populated — no ingestion performed."
@@ -109,6 +131,6 @@ async def ingest() -> IngestResponse:
 
     return IngestResponse(
         message=message,
-        rules_chunks=rules_ingested or rules_count,
-        cards_chunks=cards_ingested or cards_count,
+        rules_chunks=collection_count(settings.RULES_COLLECTION),
+        cards_chunks=collection_count(settings.CARDS_COLLECTION),
     )

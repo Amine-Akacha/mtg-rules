@@ -6,8 +6,6 @@ converts each card record into a single readable text block suitable for
 embedding and retrieval.
 """
 
-from datasets import load_dataset
-
 from config import settings
 
 
@@ -66,11 +64,9 @@ def load_card_chunks() -> list[dict]:
     Raises:
         ValueError: When the requested split does not exist in the dataset.
     """
-    dataset = load_dataset(
-        settings.CARDS_DATASET,
-        split=settings.CARDS_SPLIT,
-        trust_remote_code=True,
-    )
+    from datasets import load_dataset  # heavy import; only needed at ingest time
+
+    dataset = load_dataset(settings.CARDS_DATASET, split=settings.CARDS_SPLIT)
 
     chunks: list[dict] = []
     for card in dataset:

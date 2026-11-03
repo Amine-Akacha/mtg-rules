@@ -152,3 +152,14 @@ uvicorn main:app --reload
 ```
 
 Ingest and ask work the same way via `http://localhost:8000`.
+
+---
+
+## Tests
+
+Tests run fully offline (fake embeddings, temp ChromaDB, mocked LLM calls):
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
