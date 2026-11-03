@@ -18,15 +18,15 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 # Install the rest of the dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the embedding model so the container starts without a network call
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# Pre-download the embedding model so the container starts without a network
+# call. Keep this in sync with EMBEDDING_MODEL (override with --build-arg).
+ARG EMBEDDING_MODEL=all-MiniLM-L6-v2
+ENV EMBEDDING_MODEL=${EMBEDDING_MODEL}
+RUN python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['EMBEDDING_MODEL'])"
 
-# Copy application source
-COPY . .
-
-# Copy the MTG Comprehensive Rules PDF into the image.
+# Copy application source (secrets and local state excluded via .dockerignore).
 # mtg-rules.pdf must be present in the project root before running docker build.
-COPY mtg-rules.pdf ./mtg-rules.pdf
+COPY . .
 
 EXPOSE 8000
 
